@@ -16,6 +16,7 @@
 
 #include "processpool.h"
 
+//用于处理客户CGI请求的类，作为processpool类的模板参数
 class cgi_conn
 {
 private:
@@ -28,6 +29,18 @@ private:
     //标记读缓冲区中已经读入的客户数据的最后一个字节的下一个位置
     int m_read_idx;
 public:
-    cgi_conn(/* args */) {}
+    cgi_conn() {}
     ~cgi_conn() {}
+    //初始化客户连接，清空读缓冲区
+    void init(int epollfd, int sockfd, const sockaddr_in & client_addr)
+    {
+        m_epollfd = epollfd;
+        m_sockfd = sockfd;
+        m_address = client_addr;
+        memset(m_buf, '\0', BUFFER_SIZE);
+        m_read_idx = 0;
+    }
+
+    void
+    
 };
