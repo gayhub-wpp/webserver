@@ -32,7 +32,7 @@ private:
     //单例模式， 构造函数定义为私有, 只能通过下面的create静态函数来创建processpool
     processpool(int listenfd, int process_number = 8);
 public:
-    static processpool<T>* create(int listenfd, int process_number){
+    static processpool<T>* create(int listenfd, int process_number = 8){
         if (!m_instance)
         {
             m_instance = new processpool<T>(listenfd, process_number);
@@ -89,7 +89,7 @@ static void removefd(int epollfd, int fd){
 static void sig_handler(int sig){
     int save_errno = errno;
     int msg = sig;
-    send(sig_pipefd[1], (char*)msg, 1, 0);
+    send(sig_pipefd[1], (char*)&msg, 1, 0);
     errno = save_errno;
 }
 
@@ -108,7 +108,7 @@ static void addsig(int sig, void (handler)(int), bool restart = true){
 //进程池构建函数，listenfd是监听socket，他必须在创建进程池之前被创建，否则子进程无法直接引用他，process_number 指定进程池中子进程的数量
 template<typename T>
 processpool<T>::processpool(int listenfd, int process_number)
-    :m_listenfd(listenfd), m_process_number(process_number), m_idx(-1), m_stop(false)    //
+    :m_listenfd(listenfd), m_process_number(process_number), m_idx(-1), m_stop(false)
 {
     assert((process_number >0) && (process_number <= MAX_PROCESS_NUMBER));
     m_sub_process = new process[process_number];
@@ -135,12 +135,12 @@ processpool<T>::processpool(int listenfd, int process_number)
     }
 }
 
+//创建epoll事件监听表和信号管道
 template<typename T>
 void processpool<T>::setup_sig_pipe()
 {
-    //创建epoll事件监听表和信号管道
     m_epollfd = epoll_create(5);
-    assert(m_epollfd ! = -1);
+    assert(m_epollfd != -1);
 
     //使用socketpair创建管道，注册pipefd[0]上的可读事件
     int ret = socketpair(PF_UNIX, SOCK_STREAM, 0, sig_pipefd);
@@ -168,6 +168,7 @@ void processpool<T>::run()
     run_parent();
 }
 
+//子进程执行函数
 template<typename T>
 void processpool<T>::run_child()
 {
@@ -198,8 +199,8 @@ void processpool<T>::run_child()
             //与父进程的管道有数据到达，从管道读取数据，将结果保存到client中，读取成功则说明有新客户连接到来
             if ((sockfd == pipefd) && (events[i].events & EPOLLIN))
             {
-                int client;
-                ret = recv(sockfd, (char*)client, sizeof(client), 0);
+                int client = 0;
+                ret = recv(sockfd, (char*)&client, sizeof(client), 0);
                 if ( ((ret<0) && (errno != EAGAIN)) || ret == 0)
                 {
                     continue;
@@ -214,7 +215,7 @@ void processpool<T>::run_child()
                         continue;
                     }
                     addfd(m_epollfd, connfd);
-                    users[connfd].init(m_epollfd, connfd, client_address);  //?????????????????
+                    users[connfd].init(m_epollfd, connfd, client_address);  //模板类实现的init方法，初始化客户连接
                 }
             }
             //有信号到达，接收信号
@@ -233,9 +234,9 @@ void processpool<T>::run_child()
                         switch (signal[i])
                         {
                         case SIGCHLD:
-                            pip_t pid;
+                            pid_t pid;
                             int stat;
-                            while ((pid == waitpid(-1, &stat, WNOHANG)) > 0)
+                            while ((pid = waitpid(-1, &stat, WNOHANG)) > 0)
                             {
                                 continue;
                             }
@@ -283,7 +284,7 @@ void processpool<T>::run_parent()
 
     while (!m_stop)
     {
-        number = epoll_wait(m_epollfd, &events, MAX_EVENT_NUMBER,-1);
+        number = epoll_wait(m_epollfd, events, MAX_EVENT_NUMBER,-1);
         if ((number <0) && (errno != EINTR))
         {
             printf("epoll failure\n");
@@ -328,13 +329,13 @@ void processpool<T>::run_parent()
                 else{
                     for (int i = 0; i < ret; i++)
                     {
-                        switch (signals[i])
+                        switch (signal[i])
                         {
                         case SIGCHLD:
                         {
-                            pip_t pid;
+                            pid_t pid;
                             int stat;
-                            while ((pid == waitpid(-1, &stat, WNOHANG)) > 0)    //若有子进程退出
+                            while ((pid = waitpid(-1, &stat, WNOHANG)) > 0)    //若有子进程退出
                             {
                                 for (int i = 0; i < m_process_number; i++)
                                 {
@@ -343,7 +344,7 @@ void processpool<T>::run_parent()
                                     {
                                         printf("child %d join\n", i);
                                         close(m_sub_process[i].m_pipefd[0]);
-                                        m_sub_process[i].m_pid = -1；
+                                        m_sub_process[i].m_pid = -1;
                                     }
                                 }
                             }
