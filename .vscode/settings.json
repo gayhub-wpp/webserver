@@ -6,6 +6,10 @@
         "istream": "cpp",
         "ostream": "cpp",
         "sstream": "cpp",
-        "string_view": "cpp"
+        "string_view": "cpp",
+        "new": "cpp",
+        "string": "cpp",
+        "deque": "cpp",
+        "vector": "cpp"
     }
 }
